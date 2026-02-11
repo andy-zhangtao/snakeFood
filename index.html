@@ -432,14 +432,54 @@
         const gridSize = 20;
         const gridCount = canvas.width / gridSize;
 
+        // ========== 道具类型定义 ==========
+        const POWERUP_TYPES = {
+            SLOW_DOWN: {
+                id: 'slowDown',
+                name: '减速',
+                emoji: '❄️',
+                color: '#3498db',
+                duration: 5000, // 持续5秒
+                description: '速度减慢'
+            },
+            SHRINK: {
+                id: 'shrink',
+                name: '缩短',
+                emoji: '✂️',
+                color: '#9b59b6',
+                duration: 0, // 即时效果
+                description: '蛇身缩短'
+            },
+            SPEED_UP: {
+                id: 'speedUp',
+                name: '加速',
+                emoji: '🔥',
+                color: '#e74c3c',
+                duration: 5000,
+                description: '速度加快'
+            },
+            MULTI_FOOD: {
+                id: 'multiFood',
+                name: '多倍食物',
+                emoji: '⭐',
+                color: '#f1c40f',
+                duration: 10000,
+                description: '多食物出现'
+            }
+        };
+
         // ========== 游戏状态 ==========
         let snake = [];
         let food = {};
+        let extraFoods = []; // 额外食物数组（多倍食物效果）
+        let powerups = []; // 当前场上的道具
+        let activeEffects = []; // 当前生效的效果
+        let baseGameSpeed = 120; // 基础游戏速度
+        let gameSpeed = 120;
         let direction = 'right';
         let nextDirection = 'right';
         let score = 0;
         let highScore = localStorage.getItem('snakeHighScore') || 0;
-        let gameSpeed = 120;
         let gameLoop = null;
         let isPlaying = false;
         let isPaused = false; // 暂停状态
@@ -448,6 +488,8 @@
         let shockwaves = []; // 冲击波数组
         let flashes = []; // 闪光数组
         let animationId = null; // 动画帧ID
+        let powerupSpawnTimer = null; // 道具生成定时器
+        let effectUpdateTimer = null; // 效果更新定时器
 
         // ========== 星球大战风格粒子系统 ==========
         // 冲击波类 - 向外扩散的圆环
@@ -923,6 +965,199 @@
             } while (snake.some(segment => segment.x === food.x && segment.y === food.y));
         }
 
+        // 生成额外食物（多倍食物效果）
+        function generateExtraFoods(count = 2) {
+            extraFoods = [];
+            for (let i = 0; i < count; i++) {
+                let newFood;
+                do {
+                    newFood = {
+                        x: Math.floor(Math.random() * gridCount),
+                        y: Math.floor(Math.random() * gridCount)
+                    };
+                } while (
+                    snake.some(segment => segment.x === newFood.x && segment.y === newFood.y) ||
+                    (newFood.x === food.x && newFood.y === food.y) ||
+                    extraFoods.some(f => f.x === newFood.x && f.y === newFood.y) ||
+                    powerups.some(p => p.x === newFood.x && p.y === newFood.y)
+                );
+                extraFoods.push(newFood);
+            }
+        }
+
+        // 检查位置是否被占用
+        function isPositionOccupied(x, y) {
+            return snake.some(segment => segment.x === x && segment.y === y) ||
+                   (food.x === x && food.y === y) ||
+                   extraFoods.some(f => f.x === x && f.y === y) ||
+                   powerups.some(p => p.x === x && p.y === y);
+        }
+
+        // 生成道具
+        function generatePowerup() {
+            if (powerups.length >= 2) return; // 最多同时存在2个道具
+            
+            const types = Object.values(POWERUP_TYPES);
+            const type = types[Math.floor(Math.random() * types.length)];
+            
+            let position;
+            let attempts = 0;
+            do {
+                position = {
+                    x: Math.floor(Math.random() * gridCount),
+                    y: Math.floor(Math.random() * gridCount)
+                };
+                attempts++;
+            } while (isPositionOccupied(position.x, position.y) && attempts < 100);
+            
+            if (attempts < 100) {
+                powerups.push({
+                    ...position,
+                    type: type,
+                    spawnTime: Date.now(),
+                    lifetime: 8000 // 道具存在8秒
+                });
+            }
+        }
+
+        // 应用道具效果
+        function applyPowerupEffect(powerup) {
+            const type = powerup.type;
+            
+            // 播放道具音效
+            playPowerupSound(type);
+            
+            // 创建特效
+            const x = powerup.x * gridSize + gridSize / 2;
+            const y = powerup.y * gridSize + gridSize / 2;
+            createPowerupEffect(x, y, type.color);
+            
+            // 飘字提示
+            floatingTexts.push(new FloatingText(x, y - 20, type.emoji + type.name, type.color));
+            
+            switch (type.id) {
+                case 'slowDown':
+                    // 减速效果
+                    gameSpeed = baseGameSpeed * 1.5;
+                    restartGameLoop();
+                    addActiveEffect(type, () => {
+                        gameSpeed = baseGameSpeed;
+                        restartGameLoop();
+                    });
+                    break;
+                    
+                case 'shrink':
+                    // 缩短蛇身（保留至少3节）
+                    const removeCount = Math.min(3, snake.length - 3);
+                    if (removeCount > 0) {
+                        snake.splice(snake.length - removeCount);
+                        floatingTexts.push(new FloatingText(x, y - 40, `-${removeCount}节`, '#9b59b6'));
+                    }
+                    break;
+                    
+                case 'speedUp':
+                    // 加速效果
+                    gameSpeed = baseGameSpeed * 0.6;
+                    restartGameLoop();
+                    addActiveEffect(type, () => {
+                        gameSpeed = baseGameSpeed;
+                        restartGameLoop();
+                    });
+                    break;
+                    
+                case 'multiFood':
+                    // 多倍食物效果
+                    generateExtraFoods(3);
+                    addActiveEffect(type, () => {
+                        extraFoods = [];
+                    });
+                    break;
+            }
+        }
+
+        // 添加活跃效果
+        function addActiveEffect(type, onEnd) {
+            if (type.duration <= 0) return;
+            
+            const effect = {
+                type: type,
+                startTime: Date.now(),
+                duration: type.duration,
+                onEnd: onEnd
+            };
+            activeEffects.push(effect);
+        }
+
+        // 重启游戏循环（速度改变时）
+        function restartGameLoop() {
+            if (gameLoop) {
+                clearInterval(gameLoop);
+            }
+            gameLoop = setInterval(update, gameSpeed);
+        }
+
+        // 更新活跃效果
+        function updateActiveEffects() {
+            const now = Date.now();
+            activeEffects = activeEffects.filter(effect => {
+                if (now - effect.startTime >= effect.duration) {
+                    effect.onEnd();
+                    return false;
+                }
+                return true;
+            });
+            
+            // 清理过期道具
+            powerups = powerups.filter(p => now - p.spawnTime < p.lifetime);
+        }
+
+        // 创建道具特效
+        function createPowerupEffect(x, y, color) {
+            // 核心闪光
+            flashes.push(new Flash(x, y));
+            
+            // 冲击波
+            const shockwave = new Shockwave(x, y);
+            shockwave.color = color;
+            shockwaves.push(shockwave);
+            
+            // 粒子爆发
+            for (let i = 0; i < 15; i++) {
+                const spark = new Spark(x, y, 'fire');
+                spark.color = color;
+                particles.push(spark);
+            }
+        }
+
+        // 道具音效
+        function playPowerupSound(type) {
+            const now = audioCtx.currentTime;
+            
+            // 根据道具类型选择不同音调
+            const baseFreq = {
+                'slowDown': 400,
+                'shrink': 600,
+                'speedUp': 800,
+                'multiFood': 1000
+            }[type.id] || 500;
+            
+            // 上升音阶
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(baseFreq, now);
+            osc.frequency.exponentialRampToValueAtTime(baseFreq * 2, now + 0.15);
+            
+            gain.gain.setValueAtTime(0.3, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start(now);
+            osc.stop(now + 0.2);
+        }
+
         // ========== 绘制 ==========
         function draw() {
             // 清空画布
@@ -957,6 +1192,79 @@
             ctx.arc(foodX - 3, foodY - 3, 4, 0, Math.PI * 2);
             ctx.fillStyle = 'rgba(255,255,255,0.5)';
             ctx.fill();
+
+            // 绘制额外食物
+            extraFoods.forEach((extraFood, idx) => {
+                const ex = extraFood.x * gridSize + gridSize / 2;
+                const ey = extraFood.y * gridSize + gridSize / 2;
+                
+                // 额外食物用金色
+                ctx.beginPath();
+                ctx.arc(ex, ey, gridSize / 2 - 2, 0, Math.PI * 2);
+                ctx.fillStyle = '#f1c40f';
+                ctx.fill();
+                
+                // 闪烁高光
+                const pulse = Math.sin(Date.now() / 100 + idx) * 0.3 + 0.7;
+                ctx.beginPath();
+                ctx.arc(ex - 3, ey - 3, 4, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255,255,255,${pulse})`;
+                ctx.fill();
+            });
+
+            // 绘制道具
+            powerups.forEach(powerup => {
+                const px = powerup.x * gridSize + gridSize / 2;
+                const py = powerup.y * gridSize + gridSize / 2;
+                const type = powerup.type;
+                
+                // 道具闪烁效果（快消失时更快）
+                const remaining = powerup.lifetime - (Date.now() - powerup.spawnTime);
+                const isUrgent = remaining < 3000;
+                const pulseSpeed = isUrgent ? 300 : 600;
+                const pulse = Math.sin(Date.now() / pulseSpeed) * 0.3 + 0.7;
+                
+                // 道具背景光晕
+                ctx.save();
+                ctx.globalAlpha = pulse * 0.5;
+                const gradient = ctx.createRadialGradient(px, py, 0, px, py, gridSize);
+                gradient.addColorStop(0, type.color);
+                gradient.addColorStop(1, 'transparent');
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(px, py, gridSize, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+                
+                // 道具主体（圆形背景）
+                ctx.save();
+                ctx.globalAlpha = pulse;
+                ctx.beginPath();
+                ctx.arc(px, py, gridSize / 2 - 1, 0, Math.PI * 2);
+                ctx.fillStyle = type.color;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+                
+                // 道具边框
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.restore();
+                
+                // 道具emoji图标
+                ctx.font = '14px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(type.emoji, px, py);
+                
+                // 倒计时提示（紧急时显示）
+                if (isUrgent) {
+                    const seconds = Math.ceil(remaining / 1000);
+                    ctx.font = 'bold 10px Arial';
+                    ctx.fillStyle = '#fff';
+                    ctx.fillText(seconds + 's', px, py + 12);
+                }
+            });
 
             // 绘制蛇
             snake.forEach((segment, index) => {
@@ -1016,11 +1324,57 @@
 
             // 绘制粒子和飘字
             updateAndDrawParticles();
+
+            // 绘制活跃效果状态栏
+            drawActiveEffects();
+        }
+
+        // 绘制活跃效果状态栏
+        function drawActiveEffects() {
+            if (activeEffects.length === 0) return;
+            
+            let y = 15;
+            const now = Date.now();
+            
+            activeEffects.forEach(effect => {
+                const remaining = effect.duration - (now - effect.startTime);
+                const seconds = Math.ceil(remaining / 1000);
+                const progress = remaining / effect.duration;
+                
+                ctx.save();
+                
+                // 背景条
+                ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                ctx.fillRect(10, y, 100, 20);
+                
+                // 进度条
+                ctx.fillStyle = effect.type.color;
+                ctx.fillRect(10, y, 100 * progress, 20);
+                
+                // 边框
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(10, y, 100, 20);
+                
+                // 文字
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 12px Arial';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(`${effect.type.emoji} ${effect.type.name} ${seconds}s`, 15, y + 10);
+                
+                ctx.restore();
+                
+                y += 25;
+            });
         }
 
         // ========== 游戏逻辑 ==========
         function update() {
             direction = nextDirection;
+            
+            // 更新活跃效果和清理过期道具
+            updateActiveEffects();
             
             // 计算新头部位置
             const head = {...snake[0]};
@@ -1046,7 +1400,7 @@
 
             snake.unshift(head);
 
-            // 吃到食物
+            // 吃到主食物
             if (head.x === food.x && head.y === food.y) {
                 score += 10;
                 document.getElementById('score').textContent = score;
@@ -1056,7 +1410,28 @@
                 const foodY = food.y * gridSize + gridSize / 2;
                 createParticleExplosion(foodX, foodY);
                 generateFood();
-            } else {
+            } 
+            // 吃到额外食物
+            else if (extraFoods.some(f => f.x === head.x && f.y === head.y)) {
+                score += 15; // 额外食物分数更高
+                document.getElementById('score').textContent = score;
+                playEatSound();
+                const extraIndex = extraFoods.findIndex(f => f.x === head.x && f.y === head.y);
+                const extra = extraFoods[extraIndex];
+                const extraX = extra.x * gridSize + gridSize / 2;
+                const extraY = extra.y * gridSize + gridSize / 2;
+                createParticleExplosion(extraX, extraY);
+                floatingTexts.push(new FloatingText(extraX, extraY - 15, '+15', '#f1c40f'));
+                extraFoods.splice(extraIndex, 1);
+            }
+            // 吃到道具
+            else if (powerups.some(p => p.x === head.x && p.y === head.y)) {
+                const powerupIndex = powerups.findIndex(p => p.x === head.x && p.y === head.y);
+                const powerup = powerups[powerupIndex];
+                applyPowerupEffect(powerup);
+                powerups.splice(powerupIndex, 1);
+            }
+            else {
                 snake.pop();
             }
 
@@ -1067,6 +1442,7 @@
             isPlaying = false;
             isPaused = false;
             clearInterval(gameLoop);
+            clearInterval(powerupSpawnTimer); // 清理道具生成定时器
             cancelAnimationFrame(animationId); // 停止动画循环
             playGameOverSound();
 
@@ -1144,12 +1520,19 @@
             
             if (isPaused) {
                 clearInterval(gameLoop);
+                clearInterval(powerupSpawnTimer);
                 startBtn.classList.add('hidden');
                 pauseBtn.classList.remove('hidden');
                 pauseBtn.textContent = '▶️ 继续';
                 pauseOverlay.classList.remove('hidden');
             } else {
                 gameLoop = setInterval(update, gameSpeed);
+                // 重新启动道具生成定时器
+                powerupSpawnTimer = setInterval(() => {
+                    if (isPlaying && !isPaused) {
+                        generatePowerup();
+                    }
+                }, 5000 + Math.random() * 5000);
                 startBtn.classList.add('hidden');
                 pauseBtn.classList.remove('hidden');
                 pauseBtn.textContent = '⏸️ 暂停';
@@ -1205,7 +1588,8 @@
             btn.addEventListener('click', () => {
                 document.querySelectorAll('.difficulty button').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
-                gameSpeed = parseInt(btn.dataset.speed);
+                baseGameSpeed = parseInt(btn.dataset.speed);
+                gameSpeed = baseGameSpeed;
             });
         });
 
@@ -1232,9 +1616,21 @@
             floatingTexts = []; // 清空飘字
             shockwaves = []; // 清空冲击波
             flashes = []; // 清空闪光
+            powerups = []; // 清空道具
+            extraFoods = []; // 清空额外食物
+            activeEffects = []; // 清空活跃效果
+            gameSpeed = baseGameSpeed; // 重置速度
+            
             initGame();
             gameLoop = setInterval(update, gameSpeed);
             animate(); // 启动动画循环
+            
+            // 启动道具生成定时器（每5-10秒生成一个道具）
+            powerupSpawnTimer = setInterval(() => {
+                if (isPlaying && !isPaused) {
+                    generatePowerup();
+                }
+            }, 5000 + Math.random() * 5000);
             
             // 切换按钮显示
             document.getElementById('startBtn').classList.add('hidden');
