@@ -85,6 +85,11 @@
             transition: all 0.3s;
         }
 
+        .difficulty button.veryslow {
+            background: #9b59b6;
+            color: white;
+        }
+
         .difficulty button.slow {
             background: #2ecc71;
             color: white;
@@ -174,7 +179,6 @@
         }
 
         .mobile-controls {
-            display: none;
             margin-top: 15px;
         }
 
@@ -345,13 +349,14 @@
 
         <div class="controls">
             <div class="difficulty">
+                <button class="veryslow" data-speed="300">🦥 极慢</button>
                 <button class="slow" data-speed="200">🐢 慢</button>
                 <button class="medium active" data-speed="120">🐰 中</button>
                 <button class="fast" data-speed="60">🚀 快</button>
             </div>
             <button class="btn btn-start" id="startBtn">开始游戏</button>
             <button class="btn btn-pause hidden" id="pauseBtn">⏸️ 暂停</button>
-            <p class="hint">⌨️ 方向键控制 | 空格键暂停 | 📱 滑动屏幕</p>
+            <p class="hint">⌨️ 方向键/空格暂停 | 📱 下方方向键控制</p>
         </div>
 
         <div class="mobile-controls">
