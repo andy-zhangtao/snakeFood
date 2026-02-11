@@ -179,32 +179,38 @@
         }
 
         .mobile-controls {
-            margin-top: 15px;
+            position: fixed;
+            right: 15px;
+            bottom: 15px;
+            z-index: 60;
         }
 
         .d-pad {
             display: grid;
-            grid-template-columns: repeat(3, 60px);
-            grid-template-rows: repeat(3, 60px);
+            grid-template-columns: repeat(3, 55px);
+            grid-template-rows: repeat(3, 55px);
             gap: 5px;
             justify-content: center;
         }
 
         .d-pad button {
-            width: 60px;
-            height: 60px;
+            width: 55px;
+            height: 55px;
             border: none;
-            border-radius: 10px;
-            background: #3498db;
+            border-radius: 12px;
+            background: rgba(52, 152, 219, 0.9);
             color: white;
             font-size: 1.5rem;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.15s;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            -webkit-tap-highlight-color: transparent;
         }
 
         .d-pad button:active {
-            background: #2980b9;
-            transform: scale(0.95);
+            background: rgba(41, 128, 185, 1);
+            transform: scale(0.9);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
         }
 
         .d-pad button.empty {
@@ -313,18 +319,25 @@
                 gap: 15px;
             }
 
-            .mobile-controls {
-                display: block;
-            }
-
             .difficulty button {
-                padding: 8px 15px;
-                font-size: 0.9rem;
+                padding: 8px 12px;
+                font-size: 0.8rem;
             }
 
             .btn {
                 padding: 12px 30px;
                 font-size: 1.1rem;
+            }
+
+            .d-pad {
+                grid-template-columns: repeat(3, 50px);
+                grid-template-rows: repeat(3, 50px);
+            }
+
+            .d-pad button {
+                width: 50px;
+                height: 50px;
+                font-size: 1.2rem;
             }
         }
 
@@ -333,6 +346,25 @@
             color: #888;
             font-size: 0.9rem;
             margin-top: 10px;
+        }
+
+        /* 桌面端隐藏方向键 */
+        @media (min-width: 900px) {
+            .mobile-controls {
+                display: none;
+            }
+        }
+
+        /* 移动端：缩小游戏区域 */
+        @media (max-width: 899px) {
+            .game-container {
+                padding: 15px;
+            }
+            
+            #gameCanvas {
+                width: 300px !important;
+                height: 300px !important;
+            }
         }
     </style>
 </head>
