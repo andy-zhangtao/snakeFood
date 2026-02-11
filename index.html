@@ -126,6 +126,53 @@
             box-shadow: 0 5px 20px rgba(0,0,0,0.3);
         }
 
+        .btn-pause {
+            background: linear-gradient(135deg, #6c5ce7, #a29bfe);
+            color: white;
+        }
+
+        .btn-pause:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+        }
+
+        /* 暂停遮罩 */
+        .pause-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+        }
+
+        .pause-overlay.hidden {
+            display: none;
+        }
+
+        .pause-content {
+            background: rgba(255,255,255,0.95);
+            padding: 30px 50px;
+            border-radius: 20px;
+            text-align: center;
+            animation: popIn 0.3s ease;
+        }
+
+        .pause-content h2 {
+            font-size: 2rem;
+            color: #6c5ce7;
+            margin-bottom: 10px;
+        }
+
+        .pause-content p {
+            color: #666;
+            margin-bottom: 15px;
+        }
+
         .mobile-controls {
             display: none;
             margin-top: 15px;
@@ -303,7 +350,8 @@
                 <button class="fast" data-speed="60">🚀 快</button>
             </div>
             <button class="btn btn-start" id="startBtn">开始游戏</button>
-            <p class="hint">⌨️ 方向键控制 或 📱 滑动屏幕</p>
+            <button class="btn btn-pause hidden" id="pauseBtn">⏸️ 暂停</button>
+            <p class="hint">⌨️ 方向键控制 | 空格键暂停 | 📱 滑动屏幕</p>
         </div>
 
         <div class="mobile-controls">
@@ -318,6 +366,15 @@
                 <button id="downBtn">⬇️</button>
                 <button class="empty"></button>
             </div>
+        </div>
+    </div>
+
+    <!-- 暂停遮罩 -->
+    <div class="pause-overlay hidden" id="pauseOverlay">
+        <div class="pause-content">
+            <h2>⏸️ 游戏暂停</h2>
+            <p>点击"继续"或按空格键恢复</p>
+            <button class="btn btn-start" id="resumeBtn">▶️ 继续游戏</button>
         </div>
     </div>
 
@@ -971,6 +1028,7 @@
 
         function gameOver() {
             isPlaying = false;
+            isPaused = false;
             clearInterval(gameLoop);
             cancelAnimationFrame(animationId); // 停止动画循环
             playGameOverSound();
@@ -982,6 +1040,12 @@
                 document.getElementById('highScore').textContent = highScore;
             }
 
+            // 重置按钮状态
+            document.getElementById('startBtn').classList.remove('hidden');
+            document.getElementById('pauseBtn').classList.add('hidden');
+            document.getElementById('pauseOverlay').classList.add('hidden');
+            document.getElementById('startBtn').textContent = '开始游戏';
+
             // 显示结束界面
             document.getElementById('finalScore').textContent = score;
             document.getElementById('encourageText').textContent = 
@@ -991,7 +1055,16 @@
 
         // ========== 控制 ==========
         function handleKeydown(e) {
-            if (!isPlaying) return;
+            // 空格键暂停/继续
+            if (e.key === ' ' || e.key === 'Escape') {
+                if (isPlaying) {
+                    togglePause();
+                }
+                e.preventDefault();
+                return;
+            }
+            
+            if (!isPlaying || isPaused) return;
             
             const keyMap = {
                 'ArrowUp': 'up',
@@ -1023,6 +1096,28 @@
             }
             
             e.preventDefault();
+        }
+
+        // 暂停/继续
+        function togglePause() {
+            isPaused = !isPaused;
+            const startBtn = document.getElementById('startBtn');
+            const pauseBtn = document.getElementById('pauseBtn');
+            const pauseOverlay = document.getElementById('pauseOverlay');
+            
+            if (isPaused) {
+                clearInterval(gameLoop);
+                startBtn.classList.add('hidden');
+                pauseBtn.classList.remove('hidden');
+                pauseBtn.textContent = '▶️ 继续';
+                pauseOverlay.classList.remove('hidden');
+            } else {
+                gameLoop = setInterval(update, gameSpeed);
+                startBtn.classList.add('hidden');
+                pauseBtn.classList.remove('hidden');
+                pauseBtn.textContent = '⏸️ 暂停';
+                pauseOverlay.classList.add('hidden');
+            }
         }
 
         // 触屏滑动
@@ -1079,6 +1174,8 @@
 
         // 开始游戏
         document.getElementById('startBtn').addEventListener('click', startGame);
+        document.getElementById('pauseBtn').addEventListener('click', togglePause);
+        document.getElementById('resumeBtn').addEventListener('click', togglePause);
         document.getElementById('restartBtn').addEventListener('click', () => {
             document.getElementById('gameOverOverlay').classList.add('hidden');
             startGame();
@@ -1093,6 +1190,7 @@
             }
             
             isPlaying = true;
+            isPaused = false;
             particles = []; // 清空粒子
             floatingTexts = []; // 清空飘字
             shockwaves = []; // 清空冲击波
@@ -1101,7 +1199,11 @@
             gameLoop = setInterval(update, gameSpeed);
             animate(); // 启动动画循环
             
-            document.getElementById('startBtn').textContent = '游戏中...';
+            // 切换按钮显示
+            document.getElementById('startBtn').classList.add('hidden');
+            document.getElementById('pauseBtn').classList.remove('hidden');
+            document.getElementById('pauseBtn').textContent = '⏸️ 暂停';
+            document.getElementById('pauseOverlay').classList.add('hidden');
         }
 
         // 事件监听
