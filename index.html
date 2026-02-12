@@ -349,22 +349,105 @@
         }
 
         /* 桌面端隐藏方向键 */
-        @media (min-width: 900px) {
+        @media (min-width: 1025px) {
             .mobile-controls {
                 display: none;
             }
         }
 
-        /* 移动端：缩小游戏区域 */
-        @media (max-width: 899px) {
+        /* iPad (768px - 1024px): 中等尺寸 */
+        @media (min-width: 768px) and (max-width: 1024px) {
             .game-container {
                 padding: 15px;
             }
             
             #gameCanvas {
-                width: 300px !important;
-                height: 300px !important;
+                width: 480px !important;
+                height: 480px !important;
             }
+            
+            .d-pad {
+                grid-template-columns: repeat(3, 60px);
+                grid-template-rows: repeat(3, 60px);
+            }
+            
+            .d-pad button {
+                width: 60px;
+                height: 60px;
+                font-size: 1.8rem;
+            }
+        }
+
+        /* 手机端 (小于768px): 小尺寸 */
+        @media (max-width: 767px) {
+            .game-container {
+                padding: 15px;
+            }
+            
+            #gameCanvas {
+                width: 320px !important;
+                height: 320px !important;
+            }
+        }
+
+        /* 路径预览开关样式 */
+        .path-preview-toggle {
+            margin-top: 15px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .toggle-label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .toggle-label input {
+            display: none;
+        }
+
+        .toggle-slider {
+            width: 50px;
+            height: 26px;
+            background: #ccc;
+            border-radius: 13px;
+            position: relative;
+            transition: all 0.3s;
+            margin-right: 10px;
+        }
+
+        .toggle-slider::before {
+            content: '';
+            position: absolute;
+            width: 22px;
+            height: 22px;
+            background: white;
+            border-radius: 50%;
+            top: 2px;
+            left: 2px;
+            transition: all 0.3s;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        .toggle-label input:checked + .toggle-slider {
+            background: linear-gradient(135deg, #4caf50, #8bc34a);
+        }
+
+        .toggle-label input:checked + .toggle-slider::before {
+            transform: translateX(24px);
+        }
+
+        .toggle-text {
+            font-size: 1rem;
+            color: #666;
+            transition: color 0.3s;
+        }
+
+        .toggle-label input:checked ~ .toggle-text {
+            color: #4caf50;
+            font-weight: bold;
         }
     </style>
 </head>
@@ -377,7 +460,7 @@
             <div class="score-item">最高分: <span id="highScore">0</span></div>
         </div>
 
-        <canvas id="gameCanvas" width="400" height="400"></canvas>
+        <canvas id="gameCanvas" width="500" height="500"></canvas>
 
         <div class="controls">
             <div class="difficulty">
@@ -389,6 +472,14 @@
             <button class="btn btn-start" id="startBtn">开始游戏</button>
             <button class="btn btn-pause hidden" id="pauseBtn">⏸️ 暂停</button>
             <p class="hint">⌨️ 方向键/空格暂停 | 📱 下方方向键控制</p>
+            
+            <div class="path-preview-toggle">
+                <label class="toggle-label">
+                    <input type="checkbox" id="pathPreviewToggle">
+                    <span class="toggle-slider"></span>
+                    <span class="toggle-text">👁️ 路径预览 (儿童模式)</span>
+                </label>
+            </div>
         </div>
 
         <div class="mobile-controls">
@@ -465,11 +556,53 @@
                 color: '#f1c40f',
                 duration: 10000,
                 description: '多食物出现'
+            },
+            // ========== 新增道具 ==========
+            MAGNET: {
+                id: 'magnet',
+                name: '磁铁',
+                emoji: '🧲',
+                color: '#e91e63',
+                duration: 6000,
+                description: '吸引附近食物'
+            },
+            REWIND: {
+                id: 'rewind',
+                name: '时间倒流',
+                emoji: '⏪',
+                color: '#00bcd4',
+                duration: 0, // 即时效果
+                description: '回退5步'
+            },
+            SHIELD: {
+                id: 'shield',
+                name: '无敌护盾',
+                emoji: '🛡️',
+                color: '#4caf50',
+                duration: 5000,
+                description: '穿墙穿身'
+            },
+            DOUBLE_SCORE: {
+                id: 'doubleScore',
+                name: '双倍积分',
+                emoji: '💎',
+                color: '#9c27b0',
+                duration: 8000,
+                description: '得分x2'
+            },
+            GHOST: {
+                id: 'ghost',
+                name: '幽灵模式',
+                emoji: '👻',
+                color: '#607d8b',
+                duration: 4000,
+                description: '穿越自身'
             }
         };
 
         // ========== 游戏状态 ==========
         let snake = [];
+        let snakeHistory = []; // 蛇的历史位置（用于时间倒流）
         let food = {};
         let extraFoods = []; // 额外食物数组（多倍食物效果）
         let powerups = []; // 当前场上的道具
@@ -479,10 +612,14 @@
         let direction = 'right';
         let nextDirection = 'right';
         let score = 0;
+        let scoreMultiplier = 1; // 分数倍率
         let highScore = localStorage.getItem('snakeHighScore') || 0;
         let gameLoop = null;
         let isPlaying = false;
         let isPaused = false; // 暂停状态
+        let isShieldActive = false; // 护盾是否激活
+        let isGhostMode = false; // 幽灵模式
+        let isPathPreviewEnabled = false; // 路径预览是否开启
         let particles = []; // 粒子数组
         let floatingTexts = []; // 飘字数组
         let shockwaves = []; // 冲击波数组
@@ -1072,6 +1209,50 @@
                         extraFoods = [];
                     });
                     break;
+                    
+                // ========== 新增道具效果 ==========
+                case 'magnet':
+                    // 磁铁效果 - 持续吸引附近食物
+                    addActiveEffect(type, () => {
+                        // 效果结束时无需操作
+                    });
+                    break;
+                    
+                case 'rewind':
+                    // 时间倒流 - 回退5步
+                    if (snakeHistory.length >= 5) {
+                        snake = JSON.parse(JSON.stringify(snakeHistory[snakeHistory.length - 5]));
+                        floatingTexts.push(new FloatingText(x, y - 40, '⏪ 回退5步', '#00bcd4'));
+                    } else {
+                        // 历史记录不足5步，回退到最初
+                        snake = JSON.parse(JSON.stringify(snakeHistory[0]));
+                        floatingTexts.push(new FloatingText(x, y - 40, '⏪ 已回退', '#00bcd4'));
+                    }
+                    break;
+                    
+                case 'shield':
+                    // 无敌护盾 - 可以穿墙和穿身
+                    isShieldActive = true;
+                    addActiveEffect(type, () => {
+                        isShieldActive = false;
+                    });
+                    break;
+                    
+                case 'doubleScore':
+                    // 双倍积分
+                    scoreMultiplier = 2;
+                    addActiveEffect(type, () => {
+                        scoreMultiplier = 1;
+                    });
+                    break;
+                    
+                case 'ghost':
+                    // 幽灵模式 - 可以穿过自身
+                    isGhostMode = true;
+                    addActiveEffect(type, () => {
+                        isGhostMode = false;
+                    });
+                    break;
             }
         }
 
@@ -1138,7 +1319,12 @@
                 'slowDown': 400,
                 'shrink': 600,
                 'speedUp': 800,
-                'multiFood': 1000
+                'multiFood': 1000,
+                'magnet': 700,
+                'rewind': 300,
+                'shield': 500,
+                'doubleScore': 1200,
+                'ghost': 450
             }[type.id] || 500;
             
             // 上升音阶
@@ -1271,6 +1457,18 @@
                 const x = segment.x * gridSize;
                 const y = segment.y * gridSize;
                 
+                // 幽灵模式：半透明效果
+                ctx.save();
+                if (isGhostMode) {
+                    ctx.globalAlpha = 0.6;
+                }
+                
+                // 护盾效果：发光边框
+                if (isShieldActive) {
+                    ctx.shadowColor = '#4caf50';
+                    ctx.shadowBlur = 10;
+                }
+                
                 // 渐变颜色
                 const hue = 120 + (index * 3) % 60;
                 ctx.fillStyle = `hsl(${hue}, 70%, ${60 - index}%)`;
@@ -1280,6 +1478,8 @@
                 ctx.beginPath();
                 ctx.roundRect(x + 1, y + 1, gridSize - 2, gridSize - 2, radius);
                 ctx.fill();
+                
+                ctx.restore();
 
                 // 蛇头眼睛
                 if (index === 0) {
@@ -1319,8 +1519,27 @@
                     ctx.arc(eyeX1, eyeY1, 1.5, 0, Math.PI * 2);
                     ctx.arc(eyeX2, eyeY2, 1.5, 0, Math.PI * 2);
                     ctx.fill();
+                    
+                    // 护盾图标在蛇头
+                    if (isShieldActive) {
+                        ctx.font = '12px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.fillText('🛡️', x + gridSize / 2, y - 3);
+                    }
+                    
+                    // 幽灵图标在蛇头
+                    if (isGhostMode) {
+                        ctx.font = '12px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.fillText('👻', x + gridSize / 2, y - 3);
+                    }
                 }
             });
+
+            // 绘制路径预览（如果开启）
+            if (isPathPreviewEnabled && snake.length > 0) {
+                drawPathPreview();
+            }
 
             // 绘制粒子和飘字
             updateAndDrawParticles();
@@ -1369,12 +1588,161 @@
             });
         }
 
+        // ========== 路径预览绘制 ==========
+        function drawPathPreview() {
+            const head = snake[0];
+            const previewSteps = 3;
+            let previewPath = [];
+            let currentPos = { x: head.x, y: head.y };
+            let currentDir = nextDirection;
+            
+            // 计算预览路径
+            for (let i = 0; i < previewSteps; i++) {
+                const nextPos = { ...currentPos };
+                
+                switch (currentDir) {
+                    case 'up': nextPos.y--; break;
+                    case 'down': nextPos.y++; break;
+                    case 'left': nextPos.x--; break;
+                    case 'right': nextPos.x++; break;
+                }
+                
+                // 检查是否会撞墙
+                const willHitWall = nextPos.x < 0 || nextPos.x >= gridCount || 
+                                    nextPos.y < 0 || nextPos.y >= gridCount;
+                
+                // 检查是否会撞自己（不考虑护盾和幽灵）
+                const willHitSelf = snake.some((segment, idx) => 
+                    idx > 0 && segment.x === nextPos.x && segment.y === nextPos.y
+                );
+                
+                previewPath.push({
+                    x: nextPos.x,
+                    y: nextPos.y,
+                    isDanger: willHitWall || willHitSelf,
+                    dangerType: willHitWall ? 'wall' : (willHitSelf ? 'self' : null)
+                });
+                
+                currentPos = nextPos;
+            }
+            
+            // 绘制预览路径
+            previewPath.forEach((step, index) => {
+                if (step.x < 0 || step.x >= gridCount || step.y < 0 || step.y >= gridCount) {
+                    return; // 跳过超出边界的
+                }
+                
+                const px = step.x * gridSize + gridSize / 2;
+                const py = step.y * gridSize + gridSize / 2;
+                const alpha = 0.6 - (index * 0.15); // 逐渐透明
+                
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                
+                if (step.isDanger) {
+                    // 危险区域：红色警告
+                    ctx.fillStyle = 'rgba(231, 76, 60, 0.4)';
+                    ctx.strokeStyle = '#e74c3c';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([4, 4]);
+                    
+                    // 绘制警告圆圈
+                    ctx.beginPath();
+                    ctx.arc(px, py, gridSize / 2 + 2, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                    
+                    // 绘制警告图标
+                    ctx.font = 'bold 14px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillStyle = '#e74c3c';
+                    ctx.globalAlpha = 0.9;
+                    ctx.fillText('⚠️', px, py);
+                } else {
+                    // 安全区域：绿色虚线圆
+                    ctx.strokeStyle = '#4caf50';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([4, 4]);
+                    
+                    ctx.beginPath();
+                    ctx.arc(px, py, gridSize / 2 - 2, 0, Math.PI * 2);
+                    ctx.stroke();
+                    
+                    // 绘制步骤数字
+                    ctx.font = 'bold 12px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillStyle = '#4caf50';
+                    ctx.fillText(index + 1, px, py);
+                }
+                
+                ctx.restore();
+            });
+            
+            // 绘制方向箭头连接线
+            ctx.save();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            
+            let prevX = head.x * gridSize + gridSize / 2;
+            let prevY = head.y * gridSize + gridSize / 2;
+            
+            previewPath.forEach((step) => {
+                if (step.x < 0 || step.x >= gridCount || step.y < 0 || step.y >= gridCount) {
+                    return;
+                }
+                
+                const px = step.x * gridSize + gridSize / 2;
+                const py = step.y * gridSize + gridSize / 2;
+                
+                ctx.beginPath();
+                ctx.moveTo(prevX, prevY);
+                ctx.lineTo(px, py);
+                ctx.stroke();
+                
+                prevX = px;
+                prevY = py;
+            });
+            
+            ctx.restore();
+            
+            // 在蛇头旁显示提示
+            if (previewPath.some(p => p.isDanger)) {
+                const headX = head.x * gridSize + gridSize / 2;
+                const headY = head.y * gridSize - 20;
+                
+                ctx.save();
+                ctx.font = 'bold 11px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#e74c3c';
+                ctx.fillText('⚠️ 前方危险！', headX, headY);
+                ctx.restore();
+            }
+        }
+
         // ========== 游戏逻辑 ==========
         function update() {
             direction = nextDirection;
             
             // 更新活跃效果和清理过期道具
             updateActiveEffects();
+            
+            // 磁铁效果：吸引附近食物
+            const hasMagnet = activeEffects.some(e => e.type.id === 'magnet');
+            if (hasMagnet) {
+                // 主食物吸引
+                attractFood(food);
+                // 额外食物吸引
+                extraFoods.forEach(f => attractFood(f));
+            }
+            
+            // 记录蛇的历史（用于时间倒流）
+            snakeHistory.push(JSON.parse(JSON.stringify(snake)));
+            if (snakeHistory.length > 20) {
+                snakeHistory.shift(); // 保留最近20步
+            }
             
             // 计算新头部位置
             const head = {...snake[0]};
@@ -1388,32 +1756,48 @@
 
             // 碰撞检测 - 墙壁
             if (head.x < 0 || head.x >= gridCount || head.y < 0 || head.y >= gridCount) {
-                gameOver();
-                return;
+                if (isShieldActive) {
+                    // 护盾模式：穿墙
+                    if (head.x < 0) head.x = gridCount - 1;
+                    if (head.x >= gridCount) head.x = 0;
+                    if (head.y < 0) head.y = gridCount - 1;
+                    if (head.y >= gridCount) head.y = 0;
+                } else {
+                    gameOver();
+                    return;
+                }
             }
 
             // 碰撞检测 - 自身
-            if (snake.some(segment => segment.x === head.x && segment.y === head.y)) {
-                gameOver();
-                return;
+            if (!isGhostMode && snake.some(segment => segment.x === head.x && segment.y === head.y)) {
+                if (!isShieldActive) {
+                    gameOver();
+                    return;
+                }
+                // 护盾模式下穿过自身
             }
 
             snake.unshift(head);
 
             // 吃到主食物
             if (head.x === food.x && head.y === food.y) {
-                score += 10;
+                const points = 10 * scoreMultiplier;
+                score += points;
                 document.getElementById('score').textContent = score;
                 playEatSound();
                 // 创建粒子爆炸效果
                 const foodX = food.x * gridSize + gridSize / 2;
                 const foodY = food.y * gridSize + gridSize / 2;
                 createParticleExplosion(foodX, foodY);
+                if (scoreMultiplier > 1) {
+                    floatingTexts.push(new FloatingText(foodX, foodY - 30, `+${points} x${scoreMultiplier}`, '#9c27b0'));
+                }
                 generateFood();
             } 
             // 吃到额外食物
             else if (extraFoods.some(f => f.x === head.x && f.y === head.y)) {
-                score += 15; // 额外食物分数更高
+                const points = 15 * scoreMultiplier;
+                score += points;
                 document.getElementById('score').textContent = score;
                 playEatSound();
                 const extraIndex = extraFoods.findIndex(f => f.x === head.x && f.y === head.y);
@@ -1421,7 +1805,11 @@
                 const extraX = extra.x * gridSize + gridSize / 2;
                 const extraY = extra.y * gridSize + gridSize / 2;
                 createParticleExplosion(extraX, extraY);
-                floatingTexts.push(new FloatingText(extraX, extraY - 15, '+15', '#f1c40f'));
+                if (scoreMultiplier > 1) {
+                    floatingTexts.push(new FloatingText(extraX, extraY - 30, `+${points} x${scoreMultiplier}`, '#9c27b0'));
+                } else {
+                    floatingTexts.push(new FloatingText(extraX, extraY - 15, `+${points}`, '#f1c40f'));
+                }
                 extraFoods.splice(extraIndex, 1);
             }
             // 吃到道具
@@ -1436,6 +1824,23 @@
             }
 
             draw();
+        }
+        
+        // 磁铁吸引食物（向蛇头方向移动1格）
+        function attractFood(foodObj) {
+            const head = snake[0];
+            const dx = head.x - foodObj.x;
+            const dy = head.y - foodObj.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance <= 5 && distance > 1) { // 5格范围内
+                // 向蛇头方向移动
+                if (Math.abs(dx) > Math.abs(dy)) {
+                    foodObj.x += dx > 0 ? 1 : -1;
+                } else {
+                    foodObj.y += dy > 0 ? 1 : -1;
+                }
+            }
         }
 
         function gameOver() {
@@ -1593,6 +1998,20 @@
             });
         });
 
+        // 路径预览开关
+        document.getElementById('pathPreviewToggle').addEventListener('change', (e) => {
+            isPathPreviewEnabled = e.target.checked;
+            // 保存设置到本地存储
+            localStorage.setItem('pathPreviewEnabled', isPathPreviewEnabled);
+        });
+
+        // 初始化路径预览开关状态
+        const savedPathPreview = localStorage.getItem('pathPreviewEnabled');
+        if (savedPathPreview === 'true') {
+            isPathPreviewEnabled = true;
+            document.getElementById('pathPreviewToggle').checked = true;
+        }
+
         // 开始游戏
         document.getElementById('startBtn').addEventListener('click', startGame);
         document.getElementById('pauseBtn').addEventListener('click', togglePause);
@@ -1620,6 +2039,10 @@
             extraFoods = []; // 清空额外食物
             activeEffects = []; // 清空活跃效果
             gameSpeed = baseGameSpeed; // 重置速度
+            snakeHistory = []; // 清空历史记录
+            scoreMultiplier = 1; // 重置分数倍率
+            isShieldActive = false; // 重置护盾状态
+            isGhostMode = false; // 重置幽灵模式
             
             initGame();
             gameLoop = setInterval(update, gameSpeed);
